@@ -57,21 +57,21 @@ type CourseSearchData struct {
 	MaxEnrollmentCrosslist string        `json:"max_enrollment_crosslist"`
 	MaximumCredit          string        `json:"maximum_credit"`
 	Meetings               []struct {
-		BuildingCode        string `json:"building_code"`
-		BuildingName        string `json:"building_name"`
-		EndHour24           int    `json:"end_hour_24"`
-		EndMinutes          int    `json:"end_minutes"`
-		EndTime             string `json:"end_time"`
-		EndTime24           int    `json:"end_time_24"`
-		MeetingDays         string `json:"meeting_days"`
-		RoomNumber          string `json:"room_number"`
-		SectionID           string `json:"section_id"`
-		SectionIDNormalized string `json:"section_id_normalized"`
-		StartHour24         int    `json:"start_hour_24"`
-		StartMinutes        int    `json:"start_minutes"`
-		StartTime           string `json:"start_time"`
-		StartTime24         int    `json:"start_time_24"`
-		Term                string `json:"term"`
+		BuildingCode        string      `json:"building_code"`
+		BuildingName        string      `json:"building_name"`
+		EndHour24           int         `json:"end_hour_24"`
+		EndMinutes          int         `json:"end_minutes"`
+		EndTime             string      `json:"end_time"`
+		EndTime24           json.Number `json:"end_time_24"`
+		MeetingDays         string      `json:"meeting_days"`
+		RoomNumber          string      `json:"room_number"`
+		SectionID           string      `json:"section_id"`
+		SectionIDNormalized string      `json:"section_id_normalized"`
+		StartHour24         int         `json:"start_hour_24"`
+		StartMinutes        int         `json:"start_minutes"`
+		StartTime           string      `json:"start_time"`
+		StartTime24         json.Number `json:"start_time_24"`
+		Term                string      `json:"term"`
 	} `json:"meetings"`
 	MinimumCredit       string        `json:"minimum_credit"`
 	PrerequisiteNotes   []interface{} `json:"prerequisite_notes"`
@@ -138,8 +138,8 @@ type CourseCatalogData struct {
 }
 
 type data struct {
-	ResultData  json.RawMessage `json:"result_data"`
-	ServiceMeta serviceMeta     `json:"service_meta"`
+	ResultData  []json.RawMessage `json:"result_data"`
+	ServiceMeta serviceMeta       `json:"service_meta"`
 }
 
 type parameterData struct {

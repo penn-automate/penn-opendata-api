@@ -55,15 +55,9 @@ func newIter(od *OpenData, req *http.Request) *PageIterator {
 	return iter
 }
 
-func (i *PageIterator) error(err error) bool {
-	i.err = err
-	i.end = true
-	return false
-}
-
 // NextPage gets the next page available.
-// If the return value if true then a new page is successfully obtained.
-// Otherwise, either the end of the result is reached, or an error has occurred.
+// If the return value if true then a new page is successfully obtained, or an error has occurred.
+// Otherwise, the end of the result is reached.
 func (i *PageIterator) NextPage() bool {
 	if i.end {
 		return false
@@ -75,31 +69,52 @@ func (i *PageIterator) NextPage() bool {
 
 	resp, err := i.od.access(i.req)
 	if err != nil {
-		return i.error(err)
+		i.err = err
+		return true
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			i.err = nil
+		}
+	}()
 
 	if err := json.NewDecoder(resp.Body).Decode(i.data); err != nil {
-		return i.error(err)
+		i.err = err
+		return true
 	}
 
 	if i.data.ServiceMeta.ErrorText != "" {
-		return i.error(errors.New(html.UnescapeString(i.data.ServiceMeta.ErrorText)))
+		i.err = errors.New(html.UnescapeString(i.data.ServiceMeta.ErrorText))
+		return true
 	}
 
-	i.cur = i.data.ServiceMeta.CurrentPageNumber
-	i.end = i.data.ServiceMeta.NumberOfPages == i.cur
+	i.cur = i.data.ServiceMeta.NextPageNumber
+	i.end = i.data.ServiceMeta.NumberOfPages == i.data.ServiceMeta.CurrentPageNumber
+	i.err = nil
 
 	return true
 }
 
-// Error gets the latest error generated.
-func (i *PageIterator) Error() error {
+// GetError gets the latest error generated.
+func (i *PageIterator) GetError() error {
 	return i.err
 }
 
-// GetResult will unmarshal the raw json message into the container the user provided.
-// Normally the container needs to be a slice of struct types provided by this package.
-func (i *PageIterator) GetResult(container interface{}) error {
-	return json.Unmarshal(i.data.ResultData, container)
+// GetResult will unmarshal the raw json message with the given index into the container the user provided.
+// Normally the container needs to be a struct with types provided by this package.
+func (i *PageIterator) GetResult(container interface{}, index int) error {
+	if i.err != nil {
+		return i.err
+	}
+	return json.Unmarshal(i.data.ResultData[index], container)
+}
+
+// GetPageSize gets the current size of the page.
+func (i *PageIterator) GetPageSize() int {
+	return len(i.data.ResultData)
+}
+
+// GetRawData get the raw json message with the given index
+func (i *PageIterator) GetRawData(index int) json.RawMessage {
+	return i.data.ResultData[index]
 }

@@ -27,7 +27,7 @@ const (
 // Term must be in the available term map.
 // Call #Registrar.GetAvailableTermMap to get the map.
 // See https://esb.isc-seo.upenn.edu/8091/documentation#coursestatusservice.
-func (r *Registrar) GetAllCourseStatus(term string) *PageIterator {
+func (r *Registrar) GetAllCourseStatus(term string) ([]CourseStatusData, error) {
 	return r.GetCourseStatus(term, &Course{"all"})
 }
 
@@ -35,20 +35,35 @@ func (r *Registrar) GetAllCourseStatus(term string) *PageIterator {
 // Term must be in the available term map.
 // Call #Registrar.GetAvailableTermMap to get the map.
 // See https://esb.isc-seo.upenn.edu/8091/documentation#coursestatusservice.
-func (r *Registrar) GetCourseStatus(term string, course *Course) *PageIterator {
+func (r *Registrar) GetCourseStatus(term string, course *Course) ([]CourseStatusData, error) {
 	allowed, err := r.GetAvailableTermMap()
 	if err != nil {
-		return newErrorIter(err)
+		return nil, err
 	}
 	_, ok := allowed[term]
 	if !ok {
-		return newErrorIter(fmt.Errorf(`term "%s" does not exist`, term))
+		return nil, fmt.Errorf(`term "%s" does not exist`, term)
 	}
 	req, err := http.NewRequest("GET", fmt.Sprintf(courseStatusURL, term, course.string), nil)
 	if err != nil {
-		return newErrorIter(err)
+		return nil, err
 	}
-	return newIter(r.od, req)
+	resp, err := r.od.access(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	data := new(data)
+	if err := json.NewDecoder(resp.Body).Decode(data); err != nil {
+		return nil, err
+	}
+	ret := make([]CourseStatusData, len(data.ResultData))
+	for i := range data.ResultData {
+		if err := json.Unmarshal(data.ResultData[i], &ret[i]); err != nil {
+			return nil, err
+		}
+	}
+	return ret, nil
 }
 
 // GetCourseCatalog allows the search of the course catalog using subjects and course numbers.
@@ -69,23 +84,25 @@ func (r *Registrar) GetCourseCatalog(department string, section uint) *PageItera
 // Call #Registrar.GetAcceptableSearchURLParametersMap to get the map.
 // See https://esb.isc-seo.upenn.edu/8091/documentation#coursesectionsearchservice.
 func (r *Registrar) SearchCourseSection(parameters map[string]string) *PageIterator {
-	value := make(url.Values)
-	allowed, err := r.GetAcceptableSearchURLParametersMap()
-	if err != nil {
-		return newErrorIter(err)
-	}
-	for k, v := range parameters {
-		_, ok := allowed[k]
-		if !ok {
-			return newErrorIter(fmt.Errorf(`parameter "%s" is not supported`, k))
-		}
-		value.Set(k, v)
-	}
 	req, err := http.NewRequest("GET", courseSearchURL, nil)
 	if err != nil {
 		return newErrorIter(err)
 	}
-	req.URL.RawQuery = value.Encode()
+	if parameters != nil {
+		value := make(url.Values)
+		allowed, err := r.GetAcceptableSearchURLParametersMap()
+		if err != nil {
+			return newErrorIter(err)
+		}
+		for k, v := range parameters {
+			_, ok := allowed[k]
+			if !ok {
+				return newErrorIter(fmt.Errorf(`parameter "%s" is not supported`, k))
+			}
+			value.Set(k, v)
+		}
+		req.URL.RawQuery = value.Encode()
+	}
 	return newIter(r.od, req)
 }
 
@@ -103,11 +120,10 @@ func (r *Registrar) getParameterData() error {
 	if err := json.NewDecoder(resp.Body).Decode(data); err != nil {
 		return err
 	}
-	var pData []*parameterData
-	if err := json.Unmarshal(data.ResultData, &pData); err != nil {
+	r.parameter = new(parameterData)
+	if err := json.Unmarshal(data.ResultData[0], r.parameter); err != nil {
 		return err
 	}
-	r.parameter = pData[0]
 	return nil
 }
 
