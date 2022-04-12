@@ -1,31 +1,38 @@
 package opendata
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"html"
 	"net/http"
 	"strconv"
+
+	"golang.org/x/oauth2"
+	"golang.org/x/oauth2/clientcredentials"
 )
 
-const openDataURL = `https://esb.isc-seo.upenn.edu/8091/open_data/`
+const openDataURL = `https://3scale-public-prod-open-data.apps.k8s.upenn.edu/api/v1/`
 
 // OpenData is a struct that stores OpenData API username and password.
 type OpenData struct {
-	user, pass string
+	client *http.Client
 }
 
 // NewOpenDataAPI generates an instance of OpenData
 // with specific username and password.
-func NewOpenDataAPI(username, password string) *OpenData {
-	return &OpenData{user: username, pass: password}
+func NewOpenDataAPI(clientId, clientSecret string) *OpenData {
+	return &OpenData{client: (&clientcredentials.Config{
+		ClientID:     clientId,
+		ClientSecret: clientSecret,
+		TokenURL:     "https://sso.apps.k8s.upenn.edu/auth/realms/master/protocol/openid-connect/token",
+		AuthStyle:    oauth2.AuthStyleInHeader,
+	}).Client(context.TODO())}
 }
 
 func (o *OpenData) access(req *http.Request) (*http.Response, error) {
-	req.Header.Set("Authorization-Bearer", o.user)
-	req.Header.Set("Authorization-Token", o.pass)
-	req.Header.Set("Content-Type", "application/json; charset=utf-8")
-	return http.DefaultClient.Do(req)
+	req.Header.Set("Accept", "application/json; charset=utf-8")
+	return o.client.Do(req)
 }
 
 // GetRegistrar generates a Registrar instance using the current OpenData instance.
@@ -83,7 +90,7 @@ func (i *PageIterator) NextPage() bool {
 		return true
 	}
 
-	if i.data.ServiceMeta.ErrorText != "" {
+	if i.data.ServiceMeta.Error {
 		i.err = errors.New(html.UnescapeString(i.data.ServiceMeta.ErrorText))
 		return true
 	}

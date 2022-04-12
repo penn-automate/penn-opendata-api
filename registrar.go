@@ -2,49 +2,41 @@ package opendata
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
-	"regexp"
-	"strings"
-	"unicode"
+	"sync"
 )
 
-// Registrar provides an wrapper for OpenData Registrar's API.
+// Registrar provides a wrapper for OpenData Registrar's API.
 type Registrar struct {
 	od        *OpenData
-	parameter *parameterData
+	parameter *courseSectionSearchParameters
+	paraLock  sync.Mutex
 }
 
 const (
 	courseParameterURL = openDataURL + `course_section_search_parameters`
-	courseStatusURL    = openDataURL + `course_status/%s/%s`
+	courseStatusURL    = openDataURL + `course_section_status/%s/%s`
 	courseCatalogURL   = openDataURL + `course_info/%s`
 	courseSearchURL    = openDataURL + `course_section_search`
 )
 
-// GetAllCourseStatus gets all courses' status in a given term at once.
-// Term must be in the available term map.
-// Call #Registrar.GetAvailableTermMap to get the map.
-// See https://esb.isc-seo.upenn.edu/8091/documentation#coursestatusservice.
-func (r *Registrar) GetAllCourseStatus(term string) ([]CourseStatusData, error) {
-	return r.GetCourseStatus(term, &Course{"all"})
-}
-
-// GetCourseStatus gets the specific course's status in a given term.
-// Term must be in the available term map.
-// Call #Registrar.GetAvailableTermMap to get the map.
-// See https://esb.isc-seo.upenn.edu/8091/documentation#coursestatusservice.
-func (r *Registrar) GetCourseStatus(term string, course *Course) ([]CourseStatusData, error) {
+func (r *Registrar) checkTerm(term string) error {
 	allowed, err := r.GetAvailableTermMap()
 	if err != nil {
-		return nil, err
+		return err
 	}
 	_, ok := allowed[term]
 	if !ok {
-		return nil, fmt.Errorf(`term "%s" does not exist`, term)
+		return fmt.Errorf(`term %q does not exist`, term)
 	}
-	req, err := http.NewRequest("GET", fmt.Sprintf(courseStatusURL, term, course.string), nil)
+	return nil
+}
+
+func (r *Registrar) courseStatus(term, course string) ([]CourseSectionStatus, error) {
+	req, err := http.NewRequest("GET", fmt.Sprintf(courseStatusURL, term, course), nil)
 	if err != nil {
 		return nil, err
 	}
@@ -57,7 +49,7 @@ func (r *Registrar) GetCourseStatus(term string, course *Course) ([]CourseStatus
 	if err := json.NewDecoder(resp.Body).Decode(data); err != nil {
 		return nil, err
 	}
-	ret := make([]CourseStatusData, len(data.ResultData))
+	ret := make([]CourseSectionStatus, len(data.ResultData))
 	for i := range data.ResultData {
 		if err := json.Unmarshal(data.ResultData[i], &ret[i]); err != nil {
 			return nil, err
@@ -66,23 +58,45 @@ func (r *Registrar) GetCourseStatus(term string, course *Course) ([]CourseStatus
 	return ret, nil
 }
 
+// GetAllCourseStatus gets all courses' status in a given term at once.
+// Term must be in the available term map.
+// Call #Registrar.GetAvailableTermMap to get the map.
+// See https://app.swaggerhub.com/apis-docs/UPennISC/open-data/prod#/Course%20section%20status%20service/getAllCourseSectionStatuses.
+func (r *Registrar) GetAllCourseStatus(term string) ([]CourseSectionStatus, error) {
+	if err := r.checkTerm(term); err != nil {
+		return nil, err
+	}
+	return r.courseStatus(term, "all")
+}
+
+// GetCourseStatus gets the specific course's status in a given term.
+// Term must be in the available term map.
+// Call #Registrar.GetAvailableTermMap to get the map.
+// See https://app.swaggerhub.com/apis-docs/UPennISC/open-data/prod#/Course%20section%20status%20service/getOneCourseSectionStatus.
+func (r *Registrar) GetCourseStatus(term string, course *Course) ([]CourseSectionStatus, error) {
+	if err := r.checkTerm(term); err != nil {
+		return nil, err
+	}
+	return r.courseStatus("id/"+term, course.string)
+}
+
 // GetCourseCatalog allows the search of the course catalog using subjects and course numbers.
-// See https://esb.isc-seo.upenn.edu/8091/documentation#coursecatalogsearchservice.
-func (r *Registrar) GetCourseCatalog(department string, section uint) *PageIterator {
+// See https://app.swaggerhub.com/apis-docs/UPennISC/open-data/prod#/Course%20search%20service.
+func (r *Registrar) GetCourseCatalog(department, section string) *PageIterator {
 	req, err := http.NewRequest("GET", fmt.Sprintf(courseCatalogURL, department), nil)
 	if err != nil {
 		return newErrorIter(err)
 	}
-	if section != 0 {
-		req.URL.Path += fmt.Sprintf("/%03d", section)
+	if section != "" {
+		req.URL.Path += fmt.Sprintf("/%s", section)
 	}
 	return newIter(r.od, req)
 }
 
-// SearchCourseSection gets the searched results with given parameters on PennInTouch.
+// SearchCourseSection gets the searched results with given parameters on Path@Penn.
 // The parameters map must have keys that are in acceptable search url parameters map.
 // Call #Registrar.GetAcceptableSearchURLParametersMap to get the map.
-// See https://esb.isc-seo.upenn.edu/8091/documentation#coursesectionsearchservice.
+// See https://app.swaggerhub.com/apis-docs/UPennISC/open-data/prod#/Course%20section%20search%20service/searchCourseSections.
 func (r *Registrar) SearchCourseSection(parameters map[string]string) *PageIterator {
 	req, err := http.NewRequest("GET", courseSearchURL, nil)
 	if err != nil {
@@ -97,7 +111,7 @@ func (r *Registrar) SearchCourseSection(parameters map[string]string) *PageItera
 		for k, v := range parameters {
 			_, ok := allowed[k]
 			if !ok {
-				return newErrorIter(fmt.Errorf(`parameter "%s" is not supported`, k))
+				return newErrorIter(fmt.Errorf(`parameter %q is not supported`, k))
 			}
 			value.Set(k, v)
 		}
@@ -107,6 +121,8 @@ func (r *Registrar) SearchCourseSection(parameters map[string]string) *PageItera
 }
 
 func (r *Registrar) getParameterData() error {
+	r.paraLock.Lock()
+	defer r.paraLock.Unlock()
 	if r.parameter != nil {
 		return nil
 	}
@@ -120,7 +136,10 @@ func (r *Registrar) getParameterData() error {
 	if err := json.NewDecoder(resp.Body).Decode(data); err != nil {
 		return err
 	}
-	r.parameter = new(parameterData)
+	if len(data.ResultData) < 1 {
+		return errors.New("unexpected result return length")
+	}
+	r.parameter = new(courseSectionSearchParameters)
 	if err := json.Unmarshal(data.ResultData[0], r.parameter); err != nil {
 		return err
 	}
@@ -135,83 +154,10 @@ func (r *Registrar) GetAvailableTermMap() (map[string]string, error) {
 	return r.parameter.AvailableTermsMap, nil
 }
 
-// GetDepartmentsMap gets departments map provided by OpenData API.
-func (r *Registrar) GetDepartmentsMap() (map[string]string, error) {
-	if err := r.getParameterData(); err != nil {
-		return nil, err
-	}
-	return r.parameter.DepartmentsMap, nil
-}
-
 // GetAcceptableSearchURLParametersMap gets departments map provided by OpenData API.
 func (r *Registrar) GetAcceptableSearchURLParametersMap() (map[string]string, error) {
 	if err := r.getParameterData(); err != nil {
 		return nil, err
 	}
 	return r.parameter.AcceptableSearchURLParametersMap, nil
-}
-
-// Course is a normalized struct for course and section ID.
-type Course struct{ string }
-
-// NewCourse generates a new Course instance based on department, course, and section ID.
-func NewCourse(department string, course, section uint) *Course {
-	department = strings.ToUpper(strings.TrimSpace(department))
-	if len(department) >= 4 || len(department) <= 1 || course >= 1000 || section >= 1000 {
-		return nil
-	}
-	return &Course{fmt.Sprintf("%-4s%03d%03d", department, course, section)}
-}
-
-// ParseCourse generates a new Course instance based on course ID string.
-// 	ParseCourse("NETS212001")
-func ParseCourse(course string) *Course {
-	var dep []rune
-	cur := 0
-	for ; cur < len(course); cur++ {
-		r := rune(course[cur])
-		if unicode.IsLetter(r) {
-			dep = append(dep, unicode.ToUpper(r))
-		} else if unicode.IsDigit(r) {
-			break
-		}
-	}
-	for len(dep) < 4 {
-		dep = append(dep, ' ')
-	}
-	if len(dep) > 4 {
-		return nil
-	}
-	if len(course)-cur != 6 {
-		return nil
-	}
-	c := course[cur : cur+3]
-	if c == "000" {
-		return nil
-	}
-	s := course[cur+3:]
-	if s == "000" {
-		return nil
-	}
-	return &Course{string(dep) + c + s}
-}
-
-// ParseCourseReadable generates a new Course instance based on
-// readable course ID string with delimiter.
-// 	ParseCourseReadable("NETS-212-001")
-func ParseCourseReadable(course string) *Course {
-	return ParseCourse(strings.ReplaceAll(course, "-", ""))
-}
-
-var courseRegex = regexp.MustCompile(`^([a-zA-Z]{2,4})\s*-?([1-9][0-9][0-9]|[0-9][1-9][0-9]|[0-9][0-9][1-9]|[1-9][0-9]|[0-9][1-9])-?([1-9][0-9][0-9]|[0-9][1-9][0-9]|[0-9][0-9][1-9])$`)
-
-// ParseCourseRegex generates a new Course instance based on course ID string using regex to match.
-// 	ParseCourseRegex("MUSC50003")
-func ParseCourseRegex(course string) *Course {
-	match := courseRegex.FindStringSubmatch(course)
-	if len(match) != 4 {
-		return nil
-	}
-	match[1] = strings.ToUpper(match[1])
-	return &Course{fmt.Sprintf("%-4s%03s%s", match[1], match[2], match[3])}
 }

@@ -3,22 +3,15 @@ package opendata
 import "testing"
 
 func TestParseCourseFullWidth(t *testing.T) {
-	course := ParseCourse("NETS150001")
-	if course == nil || course.string != "NETS150001" {
+	course := ParseCourse("NETS1120001")
+	if course == nil || course.string != "NETS1120001" {
 		t.Fail()
 	}
 }
 
 func TestParseCourseTrimWidth(t *testing.T) {
-	course := ParseCourse("CIS120001")
-	if course == nil || course.string != "CIS 120001" {
-		t.Fail()
-	}
-}
-
-func TestParseCourseFullWidthWhiteSpace(t *testing.T) {
-	course := ParseCourse("CIS 120001")
-	if course == nil || course.string != "CIS 120001" {
+	course := ParseCourse("CIS1200001")
+	if course == nil || course.string != "CIS1200001" {
 		t.Fail()
 	}
 }
@@ -37,37 +30,16 @@ func TestParseCourseInvalidDepartWidth(t *testing.T) {
 	}
 }
 
-func TestParseCourseInvalidCourseWidth(t *testing.T) {
-	course := ParseCourse("CIS50001")
-	if course != nil {
+func TestParseCourseNormalized(t *testing.T) {
+	course := ParseCourse("CIS-1200-001")
+	if course == nil || course.string != "CIS1200001" {
 		t.Fail()
 	}
 }
 
-func TestParseCourseInvalidSection(t *testing.T) {
-	course := ParseCourse("CIS001000")
-	if course != nil {
-		t.Fail()
-	}
-}
-
-func TestParseCourseReadable(t *testing.T) {
-	course := ParseCourseReadable("CIS-120-001")
-	if course == nil || course.string != "CIS 120001" {
-		t.Fail()
-	}
-}
-
-func TestParseCourseRegex(t *testing.T) {
-	course := ParseCourseRegex("MUSC50001")
-	if course == nil || course.string != "MUSC050001" {
-		t.Fail()
-	}
-}
-
-func TestParseCourseRegexInvalid(t *testing.T) {
-	course := ParseCourseRegex("GARBage1023023")
-	if course != nil {
+func TestParseCourseMultiTerm(t *testing.T) {
+	course := ParseCourse("CRIM-6004A-301")
+	if course == nil || course.string != "CRIM6004A301" {
 		t.Fail()
 	}
 }
