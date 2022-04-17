@@ -35,7 +35,7 @@ func NewCourse(subject, number, section string) *Course {
 	return &Course{fmt.Sprintf("%s%04s%s", subject, number, section)}
 }
 
-var courseRegex = regexp.MustCompile(`^([a-zA-Z]{2,4})\s*-?([0-9]{2,4}[AB]?)-?([0-9a-zA-Z]{3})$`)
+var courseRegex = regexp.MustCompile(`^([a-zA-Z]{2,4})\s*-?(\d{2,4}[abAB]?)-?([\da-zA-Z]{3})$`)
 
 // ParseCourse generates a new Course instance based on course ID string using regex to match.
 // 	ParseCourse("MUSC0050003")

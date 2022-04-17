@@ -41,7 +41,7 @@ func (o *OpenData) GetRegistrar() *Registrar {
 }
 
 // PageIterator provides an iterator for paging function.
-type PageIterator struct {
+type PageIterator[T any] struct {
 	od   *OpenData
 	end  bool
 	err  error
@@ -50,14 +50,14 @@ type PageIterator struct {
 	cur  int
 }
 
-func newErrorIter(err error) *PageIterator {
-	iter := &PageIterator{end: true, err: err}
+func newErrorIter[T any](err error) *PageIterator[T] {
+	iter := &PageIterator[T]{end: true, err: err}
 	iter.data = new(data)
 	return iter
 }
 
-func newIter(od *OpenData, req *http.Request) *PageIterator {
-	iter := &PageIterator{od: od, req: req, cur: 1}
+func newIter[T any](od *OpenData, req *http.Request) *PageIterator[T] {
+	iter := &PageIterator[T]{od: od, req: req, cur: 1}
 	iter.data = new(data)
 	return iter
 }
@@ -65,7 +65,7 @@ func newIter(od *OpenData, req *http.Request) *PageIterator {
 // NextPage gets the next page available.
 // If the return value if true then a new page is successfully obtained, or an error has occurred.
 // Otherwise, the end of the result is reached.
-func (i *PageIterator) NextPage() bool {
+func (i *PageIterator[T]) NextPage() bool {
 	if i.end {
 		return false
 	}
@@ -79,11 +79,7 @@ func (i *PageIterator) NextPage() bool {
 		i.err = err
 		return true
 	}
-	defer func() {
-		if err := resp.Body.Close(); err != nil {
-			i.err = nil
-		}
-	}()
+	defer resp.Body.Close()
 
 	if err := json.NewDecoder(resp.Body).Decode(i.data); err != nil {
 		i.err = err
@@ -103,25 +99,27 @@ func (i *PageIterator) NextPage() bool {
 }
 
 // GetError gets the latest error generated.
-func (i *PageIterator) GetError() error {
+func (i *PageIterator[T]) GetError() error {
 	return i.err
 }
 
 // GetResult will unmarshal the raw json message with the given index into the container the user provided.
 // Normally the container needs to be a struct with types provided by this package.
-func (i *PageIterator) GetResult(container interface{}, index int) error {
+func (i *PageIterator[T]) GetResult(index int) (*T, error) {
 	if i.err != nil {
-		return i.err
+		return nil, i.err
 	}
-	return json.Unmarshal(i.data.ResultData[index], container)
+	ret := new(T)
+	err := json.Unmarshal(i.data.ResultData[index], ret)
+	return ret, err
 }
 
 // GetPageSize gets the current size of the page.
-func (i *PageIterator) GetPageSize() int {
+func (i *PageIterator[T]) GetPageSize() int {
 	return len(i.data.ResultData)
 }
 
 // GetRawData get the raw json message with the given index
-func (i *PageIterator) GetRawData(index int) json.RawMessage {
+func (i *PageIterator[T]) GetRawData(index int) json.RawMessage {
 	return i.data.ResultData[index]
 }

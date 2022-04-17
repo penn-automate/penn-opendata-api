@@ -46,11 +46,10 @@ func TestGetSingleCourseStatus(t *testing.T) {
 func TestGetCatalogCourseInfo(t *testing.T) {
 	iter := api.GetCourseCatalog("NETS", "")
 	for iter.NextPage() {
-		data := new(CourseCatalogData)
 		if iter.GetPageSize() <= 0 {
 			t.FailNow()
 		}
-		err := iter.GetResult(data, 0)
+		_, err := iter.GetResult(0)
 		if err != nil {
 			t.Fatal(err)
 		}

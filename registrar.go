@@ -82,42 +82,42 @@ func (r *Registrar) GetCourseStatus(term string, course *Course) ([]CourseSectio
 
 // GetCourseCatalog allows the search of the course catalog using subjects and course numbers.
 // See https://app.swaggerhub.com/apis-docs/UPennISC/open-data/prod#/Course%20search%20service.
-func (r *Registrar) GetCourseCatalog(department, section string) *PageIterator {
+func (r *Registrar) GetCourseCatalog(department, section string) *PageIterator[CourseCatalogData] {
 	req, err := http.NewRequest("GET", fmt.Sprintf(courseCatalogURL, department), nil)
 	if err != nil {
-		return newErrorIter(err)
+		return newErrorIter[CourseCatalogData](err)
 	}
 	if section != "" {
 		req.URL.Path += fmt.Sprintf("/%s", section)
 	}
-	return newIter(r.od, req)
+	return newIter[CourseCatalogData](r.od, req)
 }
 
 // SearchCourseSection gets the searched results with given parameters on Path@Penn.
 // The parameters map must have keys that are in acceptable search url parameters map.
 // Call #Registrar.GetAcceptableSearchURLParametersMap to get the map.
 // See https://app.swaggerhub.com/apis-docs/UPennISC/open-data/prod#/Course%20section%20search%20service/searchCourseSections.
-func (r *Registrar) SearchCourseSection(parameters map[string]string) *PageIterator {
+func (r *Registrar) SearchCourseSection(parameters map[string]string) *PageIterator[CourseSearchData] {
 	req, err := http.NewRequest("GET", courseSearchURL, nil)
 	if err != nil {
-		return newErrorIter(err)
+		return newErrorIter[CourseSearchData](err)
 	}
 	if parameters != nil {
 		value := make(url.Values)
 		allowed, err := r.GetAcceptableSearchURLParametersMap()
 		if err != nil {
-			return newErrorIter(err)
+			return newErrorIter[CourseSearchData](err)
 		}
 		for k, v := range parameters {
 			_, ok := allowed[k]
 			if !ok {
-				return newErrorIter(fmt.Errorf(`parameter %q is not supported`, k))
+				return newErrorIter[CourseSearchData](fmt.Errorf(`parameter %q is not supported`, k))
 			}
 			value.Set(k, v)
 		}
 		req.URL.RawQuery = value.Encode()
 	}
-	return newIter(r.od, req)
+	return newIter[CourseSearchData](r.od, req)
 }
 
 func (r *Registrar) getParameterData() error {
